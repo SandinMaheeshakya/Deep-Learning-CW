@@ -1,5 +1,6 @@
 # models.py
-
+# Required pytorch modules
+from torch import nn
 import numpy as np
 import collections
 
@@ -29,13 +30,21 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
 
     def predict(self, context):
         # Look two back to find the letter before the space
-        if self.consonant_counts[context[-1]] > self.vowel_counts[context[-1]]:
+        if self.consonant_counts[context[-11]] > self.vowel_counts[context[-1]]:
             return 0
         else:
             return 1
 
+    def train_frequency_based_classifier(cons_exs, vowel_exs):
+        consonant_counts = collections.Counter()
+        vowel_counts = collections.Counter()
+        for ex in cons_exs:
+            consonant_counts[ex[-1]] += 1
+        for ex in vowel_exs:
+            vowel_counts[ex[-1]] += 1
+        return FrequencyBasedClassifier(consonant_counts, vowel_counts)
 
-class RNNClassifier(ConsonantVowelClassifier):
+class RNNClassifier(ConsonantVowelClassifier,nn.Module):
     """
     Procedure
     1. Read Data and Embedding the data
@@ -44,19 +53,24 @@ class RNNClassifier(ConsonantVowelClassifier):
     4. Validate Data
     5. Hyperparameter Tuning
     """
+
+    # Constructor Creation
+    def __init__(self,) -> None:
+
+        super(RNNClassifier,self).__init__()
+        
+    # Input Layer (Embedding Layer)
+
+    # Recurrent Layer
+
+    # Fully Connected (Dense) Layer
+
+    # Output Layer
+
     
     def predict(self, context):
         raise Exception("Implement me")
     
-    
-def train_frequency_based_classifier(cons_exs, vowel_exs):
-    consonant_counts = collections.Counter()
-    vowel_counts = collections.Counter()
-    for ex in cons_exs:
-        consonant_counts[ex[-1]] += 1
-    for ex in vowel_exs:
-        vowel_counts[ex[-1]] += 1
-    return FrequencyBasedClassifier(consonant_counts, vowel_counts)
 
 
 def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, dev_vowel_exs, vocab_index):
