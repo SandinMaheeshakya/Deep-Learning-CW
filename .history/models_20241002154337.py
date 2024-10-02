@@ -42,7 +42,7 @@ class RNNClassifier(ConsonantVowelClassifier):
     2. Creature the Neural Network
     3. Train Data
     4. Validate Data
-    5. Hyperparameter Tuning
+    5. 
     """
     
     def predict(self, context):

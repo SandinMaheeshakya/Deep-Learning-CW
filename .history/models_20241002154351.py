@@ -45,6 +45,7 @@ class RNNClassifier(ConsonantVowelClassifier):
     5. Hyperparameter Tuning
     """
     
+    
     def predict(self, context):
         raise Exception("Implement me")
     

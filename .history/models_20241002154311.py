@@ -38,11 +38,7 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
 class RNNClassifier(ConsonantVowelClassifier):
     """
     Procedure
-    1. Read Data and Embedding the data
-    2. Creature the Neural Network
-    3. Train Data
-    4. Validate Data
-    5. Hyperparameter Tuning
+    1. 
     """
     
     def predict(self, context):
