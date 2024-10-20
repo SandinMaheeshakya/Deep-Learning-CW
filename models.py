@@ -45,16 +45,18 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
         self.no_of_embeddings = no_of_embeddings
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
-        self.embeddings = nn.Embedding(self.vocab_index_size,self.no_of_embeddings)
+        self.model = self.__create_model()
 
     def __create_model(self):
         self.embeddings = nn.Embedding(self.vocab_index_size,self.no_of_embeddings)
+        self.rnn = nn.GRU(self.no_of_embeddings, self.hidden_dim, batch_first=True)
+
+        # Classification layer
+        self.fc = nn.Linear(self.hidden_dim, self.output_dim)
+        self.softmax = nn.Softmax(dim=1)
 
     def __forward(self):
         pass
-
-        
-
 
     def predict(self, context):
         raise Exception("Implement me")
