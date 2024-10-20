@@ -18,8 +18,6 @@ class ConsonantVowelClassifier(object):
         """
         raise Exception("Only implemented in subclasses")
 
-
-
 class FrequencyBasedClassifier(ConsonantVowelClassifier):
     """
     Classifier based on the last letter before the space. If it has occurred with more consonants than vowels,
@@ -39,24 +37,36 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
 
 class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
-    def __init__(self,vocab_index_size,no_of_embeddings,hidden_dim,output_dim) -> None:
+    def __init__(self,vcidx,embedding_size,hidden_size,output_size) -> None:
         super().__init__()
-        self.vocab_index_size = vocab_index_size
-        self.no_of_embeddings = no_of_embeddings
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
-        self.model = self.__create_model()
+        self.vocab_index_size = vcidx
+        self.no_of_embeddings = embedding_size
+        self.hidden_dim = hidden_size
+        self.output_dim = output_size
+        self.__create_model()
 
     def __create_model(self):
+        # Basic Architecture
+        """
+        1. Embedding Layer (with vocabulary size of 27 and embedding size of 10)
+        2. GRU RNN Layer (with input size of 10 and output hidden dimension of __________)
+        3. Fully Connected Layer
+        4. Softmax Output Layer
+        """
         self.embeddings = nn.Embedding(self.vocab_index_size,self.no_of_embeddings)
         self.rnn = nn.GRU(self.no_of_embeddings, self.hidden_dim, batch_first=True)
-
-        # Classification layer
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
         self.softmax = nn.Softmax(dim=1)
 
-    def __forward(self):
-        pass
+    def __forward(self, input_sequence):
+        # embedding
+        seq_embedding = self.embeddings(torch.tensor(input_sequence))
+        # RNN
+        _, hidden =  self.rnn(seq_embedding)
+        # Fully Connected and Output
+        logits = self.fc(hidden.squeeze(0))
+        output = self.softmax(logits)
+        return output
 
     def predict(self, context):
         raise Exception("Implement me")
