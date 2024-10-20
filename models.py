@@ -1,6 +1,8 @@
 # models.py
 
 import numpy as np
+import torch
+from torch import nn
 import collections
 
 #####################
@@ -35,7 +37,25 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
             return 1
 
 
-class RNNClassifier(ConsonantVowelClassifier):
+class RNNClassifier(ConsonantVowelClassifier,nn.Module):
+
+    def __init__(self,vocab_index_size,no_of_embeddings,hidden_dim,output_dim) -> None:
+        super().__init__()
+        self.vocab_index_size = vocab_index_size
+        self.no_of_embeddings = no_of_embeddings
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.embeddings = nn.Embedding(self.vocab_index_size,self.no_of_embeddings)
+
+    def __create_model(self):
+        self.embeddings = nn.Embedding(self.vocab_index_size,self.no_of_embeddings)
+
+    def __forward(self):
+        pass
+
+        
+
+
     def predict(self, context):
         raise Exception("Implement me")
     
@@ -127,3 +147,7 @@ def train_lm(args, train_text, dev_text, vocab_index):
     :return: an RNNLanguageModel instance trained on the given data
     """
     raise Exception("Implement me")
+
+if __name__ == "__main__":
+    embeddings = nn.Embedding(26,10)
+    print(embeddings.weight.shape)
