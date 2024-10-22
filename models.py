@@ -61,8 +61,10 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
     def __forward(self, input_sequence):
         # embedding
         seq_embedding = self.embeddings(torch.tensor(input_sequence))
+
         # RNN
         _, hidden =  self.rnn(seq_embedding)
+
         # Fully Connected and Output
         logits = self.fc(hidden.squeeze(0))
         output = self.softmax(logits)
@@ -92,8 +94,7 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
     :param vocab_index: an Indexer of the character vocabulary (27 characters)
     :return: an RNNClassifier instance trained on the given data
     """
-    raise Exception("Implement me")
-
+    
 
 #####################
 # MODELS FOR PART 2 #
