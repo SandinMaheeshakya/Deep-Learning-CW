@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from torch import nn
 import collections
+import random
 
 #####################
 # MODELS FOR PART 1 #
@@ -37,12 +38,13 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
 
 class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
-    def __init__(self, vcidx, embedding_size, hidden_size, output_size):
-        super().__init__()
+    def __init__(self, vcidx, embedding_size, hidden_size, num_layers, output_dim):
+        super(RNNClassifier,self).__init__()
         self.vocab_index_size = vcidx
         self.no_of_embeddings = embedding_size
         self.hidden_dim = hidden_size
-        self.output_dim = output_size
+        self.num_layers = num_layers
+        self.output_dim = output_dim
         self.create_model()
 
     def create_model(self):
@@ -54,21 +56,26 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
         4. Softmax Output Layer
         """
         self.embeddings = nn.Embedding(self.vocab_index_size, self.no_of_embeddings)
-        self.rnn = nn.GRU(self.no_of_embeddings, self.hidden_dim, batch_first=True)
+        self.rnn = nn.GRU(self.no_of_embeddings, self.hidden_dim,batch_first=True)
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, input_sequence):
+
         # embedding
-        seq_embedding = self.embeddings(torch.tensor(input_sequence).unsqueeze(0))  # Add batch dimension
+        seq_embedding = self.embeddings(torch.tensor(input_sequence).unsqueeze(0)) # Add batch dimension
+
+        # first hidden state
+        h0 = torch.zeros(self.num_layers,seq_embedding.size(0),self.hidden_dim)
 
         # RNN
-        _, hidden = self.rnn(seq_embedding)
+        output, _ = self.rnn(seq_embedding,h0)
 
         # Fully Connected and Output
-        logits = self.fc(hidden.squeeze(0))
-        output = self.softmax(logits)
-        return output
+        out = output[:, -1, :]  
+        out = self.fc(out)
+        out = self.softmax(out)
+        return out
 
     def predict(self, input_sequence):
         with torch.no_grad():
@@ -86,24 +93,33 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
     :return: an RNNClassifier instance trained on the given data
     """
     # parameters
-    embedding_size = 20
-    hidden_size = 50
-    output_size = 2
+    embedding_size = 10
+    hidden_size = 10
+    layers = 1
 
     # Model compiling
-    model = RNNClassifier(len(vocab_index), embedding_size, hidden_size, output_size)
+    model = RNNClassifier(len(vocab_index), embedding_size, hidden_size, layers, output_dim=2)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     
+
+    # Shuffling data each epoch
+    train_data = [(ex, 0) for ex in train_cons_exs] + [(ex, 1) for ex in train_vowel_exs]
+    dev_data = [(ex, 0) for ex in dev_cons_exs] + [(ex, 1) for ex in dev_vowel_exs]
+
+    
     # Training Loop
-    for epoch in range(10):
+    for epoch in range(20):
         model.train()
         total_loss = 0
         correct_train_predictions = 0
         total_train_examples = len(train_cons_exs) + len(train_vowel_exs)
 
         # Training on train set
-        for example, label in [(ex, 0) for ex in train_cons_exs] + [(ex, 1) for ex in train_vowel_exs]:
+        random.shuffle(train_data)
+        random.shuffle(dev_data)
+
+        for example, label in train_data:
             # Convert example to indices
             input_sequence = [vocab_index.index_of(char) for char in example]
             target = torch.tensor([label])
@@ -130,7 +146,7 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
         total_dev_examples = len(dev_cons_exs) + len(dev_vowel_exs)
         
         with torch.no_grad():
-            for example, label in [(ex, 0) for ex in dev_cons_exs] + [(ex, 1) for ex in dev_vowel_exs]:
+            for example, label in dev_data:
                 input_sequence = [vocab_index.index_of(char) for char in example]
                 target = torch.tensor([label])
                 output = model(input_sequence)
@@ -222,5 +238,7 @@ def train_lm(args, train_text, dev_text, vocab_index):
     raise Exception("Implement me")
 
 if __name__ == "__main__":
-    embeddings = nn.Embedding(26,10)
+    embeddings = nn.Embedding(28,10)
+    X = embeddings(torch.tensor([12,11,5,4,3]))
+    print(X)
     print(embeddings.weight.shape)
