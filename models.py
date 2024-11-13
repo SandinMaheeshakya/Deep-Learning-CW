@@ -1,5 +1,4 @@
 # models.py
-
 import numpy as np
 import torch
 from torch import nn
@@ -78,9 +77,11 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
         return out
 
     def predict(self, input_sequence):
+        input_sequence = [self.vocab_index.index_of(char) for char in input_sequence]
         with torch.no_grad():
             output = self.forward(input_sequence)
-            return torch.argmax(output, dim=1).item()
+            prediction = torch.argmax(output, dim=1)
+            return prediction.item()
 
 def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, dev_vowel_exs, vocab_index):
     """
@@ -93,12 +94,13 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
     :return: an RNNClassifier instance trained on the given data
     """
     # parameters
-    embedding_size = 10
-    hidden_size = 10
+    embedding_size = 20
+    hidden_size = 64
     layers = 1
 
     # Model compiling
     model = RNNClassifier(len(vocab_index), embedding_size, hidden_size, layers, output_dim=2)
+    model.vocab_index = vocab_index # storing for feature reference
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     
@@ -109,7 +111,7 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
 
     
     # Training Loop
-    for epoch in range(20):
+    for epoch in range(15):
         model.train()
         total_loss = 0
         correct_train_predictions = 0
