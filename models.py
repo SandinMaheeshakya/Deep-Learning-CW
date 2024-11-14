@@ -142,25 +142,7 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
         avg_train_loss = total_loss / total_train_examples
         train_accuracy = correct_train_predictions / total_train_examples * 100
 
-        # Evaluate on dev set
-        model.eval()
-        correct_dev_predictions = 0
-        total_dev_examples = len(dev_cons_exs) + len(dev_vowel_exs)
-        
-        with torch.no_grad():
-            for example, label in dev_data:
-                input_sequence = [vocab_index.index_of(char) for char in example]
-                target = torch.tensor([label])
-                output = model(input_sequence)
-                
-                # Calculate accuracy on dev data
-                _, predicted = torch.max(output, 1)
-                correct_dev_predictions += (predicted == target).sum().item()
-
-        dev_accuracy = correct_dev_predictions / total_dev_examples * 100
-
-        print(f"Epoch {epoch + 1}/10, Loss: {avg_train_loss:.4f}, "
-              f"Train Accuracy: {train_accuracy:.2f}%, Dev Accuracy: {dev_accuracy:.2f}%")
+        print(f"Epoch {epoch + 1}/10, Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}% ")
         
     return model
 
