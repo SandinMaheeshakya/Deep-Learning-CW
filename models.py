@@ -6,6 +6,7 @@ from torch import nn
 import collections
 import random
 from torch.utils.data import DataLoader, TensorDataset
+from torch.nn.utils.rnn import pad_sequence
 import math
 
 #####################
@@ -158,7 +159,6 @@ def train_frequency_based_classifier(cons_exs, vowel_exs):
 # MODELS FOR PART 2 #
 #####################
 
-
 class LanguageModel(object):
 
     def get_log_prob_single(self, next_char, context):
@@ -195,103 +195,118 @@ class UniformLanguageModel(LanguageModel):
     def get_log_prob_sequence(self, next_chars, context):
         return np.log(1.0/self.voc_size) * len(next_chars)
 
-class RNNLanguageModel(LanguageModel,nn.Module):
+# Define the RNN Language Model
+class RNNLanguageModel(LanguageModel, nn.Module):
     def __init__(self, model_emb, model_dec, vocab_index):
-        super(RNNLanguageModel,self).__init__()
+        super(RNNLanguageModel, self).__init__()
         self.model_emb = model_emb
         self.model_dec = model_dec
         self.vocab_index = vocab_index
 
-        # Network Design
-        self.lstm = nn.LSTM( input_size = 10 , hidden_size = 50, num_layers = 4, batch_first=True)
+        # Define the LSTM layers
+        self.lstm = nn.LSTM(input_size=128, hidden_size=512, num_layers=2, batch_first=True)
+        self.fc = nn.Linear(512, len(vocab_index))  # Output layer
 
-    def forward(self, input_sequence,inital_states=None):
+    def forward(self, input_sequence, initial_states=None):
+        text_embeddings = self.model_emb(input_sequence)  # Get embeddings
 
-        text_embeddings = self.model_emb(input_sequence)
-
-        # cell state and hidden state
-        if inital_states is None:
+        if initial_states is None:
             batch_size = input_sequence.size(0)
-            h0 = torch.zeros(4, batch_size, 50)
-            c0 = torch.zeros(4, batch_size, 50)
+            h0 = torch.zeros(2, batch_size, 512).to(input_sequence.device) 
+            c0 = torch.zeros(2, batch_size, 512).to(input_sequence.device)
+        else:
+            h0, c0 = initial_states
 
-        # Go through LSTM layer
-        lstm_output, h_state = self.lstm(text_embeddings, (h0,c0))
-
-        # feed through a fully connected and output layer
-        fc_out = self.model_dec(lstm_output[:-1:])
+        # Run through LSTM
+        lstm_output, (hn, cn) = self.lstm(text_embeddings, (h0, c0))
         
-        return fc_out
-
-    def get_log_prob_single(self, next_char, context):
-        """
-        Computes log probability for a single character given context.
-        """
-        self.eval()
-        with torch.no_grad():
-            context_indices = torch.tensor([self.vocab_index.index_of(c) for c in context]).unsqueeze(0)
-            context_emb = self.model_emb(context_indices)
-            _, hidden = self.lstm(context_emb)
-            next_char_idx = torch.tensor([self.vocab_index.index_of(next_char)]).unsqueeze(0)
-            logits, _ = self.forward(next_char_idx, hidden)
-            log_probs = torch.log_softmax(logits, dim=-1)
-            return log_probs[0, -1, self.vocab_index.index_of(next_char)].item()
-
-    def get_log_prob_sequence(self, next_chars, context):
-        """
-        Computes log probabilities for a sequence of characters given context.
-        """
-        log_probs = []
-        for char in next_chars:
-            log_prob = self.get_log_prob_single(char, context)
-            log_probs.append(log_prob)
-            context += char  # Update context by adding the current character
-        return log_probs
-
-# Helper function for text chunking with <SOS> and target label creation
-def prepare_texts(text,vocab_index):
-    context_window = 7
-    overlap_seq = 2
-    chunked_data = []
-
-    """ Text Chunking Process """
-    words = text.split() # word list
-    for i in range(0, len(words), context_window - overlap_seq):
-        current_chunk = words[i:i + context_window]
-        chunked_data.append(" ".join(current_chunk))
+        fc_out = self.fc(lstm_output)  # Shape: (batch_size, seq_length, vocab_size)
         
-        if i + (context_window - overlap_seq) >= len(words):
-            break
-  
-    """Inputs and target labels creation"""
-    inputs =  []
-    targets = []
-    for text_chunk in chunked_data:
-        input_data  = "<SOS>" + " ".join(text_chunk.split()[:-1]) # removing last token in order to predict it
-        target_label = text_chunk
+        return fc_out, (hn, cn)  # Return output and the final hidden state
 
-        # add data
-        inputs.append(input_data)
-        targets.append(target_label)
-
-    # Adding sos token to the indexer object
-    sos_index = vocab_index.add_and_get_index("<SOS>")
-
-    # Returning the tensor wrapped data
-    inputs =   [[sos_index] + [vocab_index.index_of(char) for char in sequence[5:]] for sequence in inputs]
-    targets =  [[vocab_index.index_of(char) for char in sequence] for sequence in targets]
-
-    return inputs,targets
-
-
+# Training function
 def train_lm(args, train_text, dev_text, vocab_index):
-    """
-    :param args: command-line args, passed through here for your convenience
-    :param train_text: train text as a sequence of characters
-    :param dev_text: dev texts as a sequence of characters
-    :param vocab_index: an Indexer of the character vocabulary (27 characters)
-    :return: an RNNLanguageModel instance trained on the given data
-    """
+
+    # Hyperparameters
+    embed_size = 128
+    batch_size = 64
+    seq_length = 30
+    epochs = 50
+    lr = 0.001
+
+    # Device setup
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Prepare input-output pairs for the model
+    input_seqs = []
+    target_seqs = []
+
+    # Adding SOS Token
+    sos_token = vocab_index.add_and_get_index("<SOS>")
+    for i in range(len(train_text) - seq_length):
+        input_seqs.append([sos_token] +[vocab_index.index_of(char) for char in train_text[i:i+seq_length - 1]])
+        target_seqs.append([vocab_index.index_of(char) for char in train_text[i+1:i+seq_length+1]])
+
+
+    # Convert to tensors and create DataLoader
+    input_tensor = torch.tensor(input_seqs, dtype=torch.long)
+    target_tensor = torch.tensor(target_seqs, dtype=torch.long)
+    dataset = TensorDataset(input_tensor, target_tensor)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    # Initialize the embedding and decoder models
+    embedding_model = nn.Embedding(len(vocab_index), embed_size).to(device)
+    decoder_model = nn.Embedding(len(vocab_index), embed_size).to(device)  # Assuming decoder also uses embedding
+
+    # Initialize the combined RNNLanguageModel
+    model = RNNLanguageModel(embedding_model, decoder_model, vocab_index).to(device)
+
+    # Optimizer and loss
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.CrossEntropyLoss()
+
+    # Training loop
+    model.train()
+    for epoch in range(epochs):
+        total_loss = 0
+        total_tokens = 0  # For perplexity calculation
+        total_correct = 0  # For accuracy calculation
+
+        for batch_idx, (input_seq, target_seq) in enumerate(dataloader):
+            input_seq, target_seq = input_seq.to(device), target_seq.to(device)
+
+            # Initialize hidden states
+            batch_size = input_seq.size(0)
+            hidden = None  # No initial hidden state passed
+
+            optimizer.zero_grad()  # Clear gradients
+
+            # Forward pass
+            output, hidden = model(input_seq, hidden)
+
+            # Compute loss
+            loss = criterion(output.view(-1, len(vocab_index)), target_seq.view(-1))
+            loss.backward()  # Backpropagation
+            optimizer.step()  # Update weights
+
+            # Update total loss and tokens count for perplexity
+            total_loss += loss.item()
+            total_tokens += target_seq.size(0) * target_seq.size(1)  # Total number of tokens
+
+            # Calculate accuracy
+            _, predicted = torch.max(output, dim=2)
+            correct = (predicted == target_seq).float()
+            total_correct += correct.sum().item()
+
+
+        # Compute accuracy
+        accuracy = total_correct / total_tokens * 100  # Accuracy as percentage
+
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss / len(dataloader):.4f}, Accuracy: {accuracy:.2f}%")
+
+    # Return trained model
+    return model
+        
 if __name__ == "__main__":
     embeddings = nn.Embedding(28,10)
     X = embeddings(torch.tensor([12,11,5,4,3]))
