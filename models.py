@@ -202,12 +202,16 @@ class RNNLanguageModel(LanguageModel, nn.Module):
         self.model_dec = model_dec
         self.vocab_index = vocab_index
 
-        # Define the LSTM layers
+        # Setting the device to cuda if available
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # LSTM layer
         self.lstm = nn.LSTM(input_size=256, hidden_size=512, dropout=0.2, num_layers=2,batch_first=True)
-        self.fc = nn.Linear(512, len(vocab_index))  # Output layer
 
     def forward(self, input_sequence, initial_states=None):
-        text_embeddings = self.model_emb(input_sequence)  # Get embeddings
+
+        # embeded text
+        text_embeddings = self.model_emb(input_sequence)
 
         if initial_states is None:
             batch_size = input_sequence.size(0)
@@ -216,45 +220,40 @@ class RNNLanguageModel(LanguageModel, nn.Module):
         else:
             h0, c0 = initial_states
 
-        # Run through LSTM
+        # LSTM output
         lstm_output, (hn, cn) = self.lstm(text_embeddings, (h0, c0))
         
-        fc_out = self.fc(lstm_output)  # Shape: (batch_size, seq_length, vocab_size)
+        fc_out = self.model_dec(lstm_output) # Fully connected Layer
         
-        return fc_out, (hn, cn)  # Return output and the final hidden state
+        return fc_out, (hn, cn)
     
     def get_log_prob_single(self, next_char, context):
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # Convert context to indices
+        # Sequence Conversion
         context_indices = [self.vocab_index.index_of(char) for char in context]
+        context_tensor = torch.tensor(context_indices, dtype=torch.long).unsqueeze(0).to(self.device)
         
-        # Add a batch dimension and convert to tensor
-        context_tensor = torch.tensor(context_indices, dtype=torch.long).unsqueeze(0).to(device)
+        # model output
+        hs_cs = None 
+        output, _ = self.forward(context_tensor, hs_cs) 
         
-        # Pass the context through the model
-        hidden = None  # Start with no hidden state
-        output, _ = self.forward(context_tensor, hidden)  # Shape: [1, seq_length, vocab_size]
+        # log-probabilities of the last character
+        log_char = output[0, -1]
+        log_prob = torch.log_softmax(log_char, dim=0) 
         
-        # Get the log-probabilities for the last character in the context
-        logits = output[0, -1]  # Shape: [vocab_size]
-        log_probs = torch.log_softmax(logits, dim=0)  # Log probabilities over the vocabulary
-        
-        # Get the log-probability of the next_char
+        # log probability of the next character
         next_char_index = self.vocab_index.index_of(next_char)
-
-        return log_probs[next_char_index].item()
+        return log_prob[next_char_index].item()
 
     def get_log_prob_sequence(self, next_chars, context):
         log_prob_seq = 0.0
-        for next_char in next_chars:
-            # Calculate log-probability for the current character
-            log_prob_seq += self.get_log_prob_single(next_char, context)
-            
-            # Update the context to include the current character
-            context += next_char
+        for char in next_chars:
+            # Calculate log-probability for each character and add the context in order to use the log_prob_single method
+            log_prob_seq += self.get_log_prob_single(char, context)
+            context += char
     
         return log_prob_seq
+    
 # Training function
 def train_lm(args, train_text, dev_text, vocab_index):
 
@@ -269,30 +268,28 @@ def train_lm(args, train_text, dev_text, vocab_index):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Prepare input-output pairs for the model
-    input_seqs = []
-    target_seqs = []
+    input_sequence = []
+    target_sequence = []
 
     # Adding SOS Token
     sos_token = vocab_index.add_and_get_index("<SOS>")
     for i in range(len(train_text) - seq_length):
-        input_seqs.append([vocab_index.index_of(char) for char in train_text[i:i+seq_length]])
-        target_seqs.append([vocab_index.index_of(char) for char in train_text[i+1:i+seq_length+1]])
+        input_sequence.append([vocab_index.index_of(char) for char in train_text[i:i+seq_length]])
+        target_sequence.append([vocab_index.index_of(char) for char in train_text[i+1:i+seq_length+1]])
 
 
     # Convert to tensors and create DataLoader
-    input_tensor = torch.tensor(input_seqs, dtype=torch.long)
-    target_tensor = torch.tensor(target_seqs, dtype=torch.long)
+    input_tensor = torch.tensor(input_sequence, dtype=torch.long)
+    target_tensor = torch.tensor(target_sequence, dtype=torch.long)
     dataset = TensorDataset(input_tensor, target_tensor)
     dataloader = DataLoader(dataset, batch_size=batch_size,shuffle=True)
 
     # Initialize the embedding and decoder models
     embedding_model = nn.Embedding(len(vocab_index), embed_size).to(device)
-    decoder_model = nn.Embedding(len(vocab_index), embed_size).to(device)  # Assuming decoder also uses embedding
-
-    # Initialize the combined RNNLanguageModel
+    decoder_model = nn.Linear(512, len(vocab_index))
     model = RNNLanguageModel(embedding_model, decoder_model, vocab_index).to(device)
 
-    # Optimizer and loss
+    # Optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
@@ -300,10 +297,10 @@ def train_lm(args, train_text, dev_text, vocab_index):
     model.train()
     for epoch in range(epochs):
         total_loss = 0
-        total_tokens = 0  # For perplexity calculation
-        total_correct = 0  # For accuracy calculation
 
         for batch_idx, (input_seq, target_seq) in enumerate(dataloader):
+
+            # Cuda support
             input_seq, target_seq = input_seq.to(device), target_seq.to(device)
 
             # Initialize hidden states
@@ -315,25 +312,15 @@ def train_lm(args, train_text, dev_text, vocab_index):
             # Forward pass
             output, hidden = model(input_seq, hidden)
 
-            # Compute loss
+            # loss calculation
             loss = criterion(output.view(-1, len(vocab_index)), target_seq.view(-1))
-            loss.backward()  # Backpropagation
-            optimizer.step()  # Update weights
+            loss.backward()  
+            optimizer.step()
 
             # Update total loss and tokens count for perplexity
             total_loss += loss.item()
-            total_tokens += target_seq.size(0) * target_seq.size(1)  # Total number of tokens
 
-            # Calculate accuracy
-            _, predicted = torch.max(output, dim=2)
-            correct = (predicted == target_seq).float()
-            total_correct += correct.sum().item()
-
-        # Compute accuracy
-        accuracy = total_correct / total_tokens * 100  # Accuracy as percentage
-
-        
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss / len(dataloader):.4f}, Accuracy: {accuracy:.2f}%")
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss / len(dataloader):.4f}")
 
     # Return trained model
     return model
