@@ -4,7 +4,6 @@ import torch
 from torch import nn
 import collections
 from torch.utils.data import DataLoader, Dataset
-import random
 
 #####################
 # MODELS FOR PART 1 #
@@ -35,9 +34,10 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
         else:
             return 1
 
-# Creating a tensor type dataset to store the text indexes
+# Helper Function - Creating a tensor type dataset to store the text indexes
 class TensorDataset(Dataset):
     def __init__(self, consonant_data, vowel_data, vocab_index):
+
         self.data = []
         for word in consonant_data:
             self.data.append((word, 0))  # Consonant = 0
@@ -48,11 +48,12 @@ class TensorDataset(Dataset):
     def __len__(self):
         return len(self.data)
     
-    def __getitem__(self, index):
-        example, label = self.data[index]
+    def __getitem__(self, idx):
+        example, label = self.data[idx]
         input_sequence = [self.vocab_index.index_of(char) for char in example]
         input_tensor = torch.tensor(input_sequence, dtype=torch.long)
-        return input_tensor, torch.tensor(label, dtype=torch.long)
+        input_label = torch.tensor(label, dtype=torch.long)
+        return input_tensor, input_label
 
 class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
@@ -92,11 +93,13 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
         # Fully Connected and Output
         out = output[:, -1, :]  
-        out = self.fc(self.dropout(out))
+        out = self.fc(self.dropout(out)) # droput
+
+        # Returns through a softmax layer
         return self.softmax(out)
 
     def predict(self, input_sequence):
-        
+
         input_sequence = torch.tensor([self.vocab_index.index_of(char) for char in input_sequence], 
                                       dtype=torch.long
             ) 
