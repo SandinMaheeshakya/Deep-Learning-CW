@@ -35,7 +35,7 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
             return 1
 
 # Helper Function - Creating a tensor type dataset to store the text indexes
-class TensorDataset(Dataset):
+class TensoredDataset(Dataset):
     def __init__(self, consonant_data, vowel_data, vocab_index):
 
         self.data = []
@@ -134,8 +134,8 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     
     # Create datasets and dataloaders
-    train_dataset = TensorDataset(train_cons_exs, train_vowel_exs, vocab_index)
-    dev_dataset = TensorDataset(dev_cons_exs, dev_vowel_exs, vocab_index)
+    train_dataset = TensoredDataset(train_cons_exs, train_vowel_exs, vocab_index)
+    dev_dataset = TensoredDataset(dev_cons_exs, dev_vowel_exs, vocab_index)
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     dev_loader = DataLoader(dev_dataset, batch_size=128, shuffle=False)
 
