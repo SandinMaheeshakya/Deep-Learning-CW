@@ -83,6 +83,10 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
     def forward(self, input_sequence):
 
+        # Value checks
+        if not isinstance(input_sequence, torch.Tensor):
+            raise TypeError("Input has to be a tensor")
+        
         # embedding
         seq_embedding = self.embeddings(input_sequence)
 
@@ -101,16 +105,20 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
     def predict(self, input_sequence):
 
-        input_sequence = torch.tensor([self.vocab_index.index_of(char) for char in input_sequence], 
-                                      dtype=torch.long
-            ) 
-        
-        input_sequence = input_sequence.unsqueeze(0) # add another dimension to match the required dimension
+        try:
+            input_sequence = torch.tensor([self.vocab_index.index_of(char) for char in input_sequence], 
+                                        dtype=torch.long
+                ) 
+            
+            input_sequence = input_sequence.unsqueeze(0) # add another dimension to match the required dimension
 
-        with torch.no_grad():
-            output = self.forward(input_sequence)
-            prediction = torch.argmax(output, dim=1)
-            return prediction.item()
+            with torch.no_grad():
+                output = self.forward(input_sequence)
+                prediction = torch.argmax(output, dim=1)
+                return prediction.item()
+            
+        except Exception as e:
+            print(f"Error -> {e}")
 
 def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, dev_vowel_exs, vocab_index):
 
@@ -131,51 +139,55 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     dev_loader = DataLoader(dev_dataset, batch_size=128, shuffle=False)
 
-   # Training loop
-    for epoch in range(12):
-        model.train() # training state
-        
-        total_loss = 0
-        correct_train_predictions = 0
-        total_train_examples = len(train_loader.dataset)
-
-        for input_sequence, target in train_loader:
+    try:
+        # Training loop
+        for epoch in range(12):
+            model.train() # training state
             
-            optimizer.zero_grad()
+            total_loss = 0
+            correct_train_predictions = 0
+            total_train_examples = len(train_loader.dataset)
 
-            output = model(input_sequence)
-            loss = criterion(output, target)
+            for input_sequence, target in train_loader:
+                
+                optimizer.zero_grad()
 
-            # Backpropagation and optimization
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-
-            # Calculate accuracy on training data
-            _, predicted = torch.max(output, 1)
-            correct_train_predictions += (predicted == target).sum().item()
-
-        avg_train_loss = total_loss / total_train_examples
-        train_accuracy = correct_train_predictions / total_train_examples * 100
-
-        # Print epoch results
-        print(f"Epoch {epoch + 1}/{12}, Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
-
-        # Evaluate on the development data
-        model.eval()
-        correct_development_predictions = 0
-        total_development_examples = len(dev_loader.dataset)
-
-        with torch.no_grad():
-            for input_sequence, target in dev_loader:
                 output = model(input_sequence)
+                loss = criterion(output, target)
 
+                # Backpropagation and optimization
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+                # Calculate accuracy on training data
                 _, predicted = torch.max(output, 1)
-                correct_development_predictions += (predicted == target).sum().item()
+                correct_train_predictions += (predicted == target).sum().item()
 
-        dev_accuracy = correct_development_predictions / total_development_examples * 100
-        print(f"Dev Accuracy: {dev_accuracy:.2f}%")
+            avg_train_loss = total_loss / total_train_examples
+            train_accuracy = correct_train_predictions / total_train_examples * 100
+
+            # Print epoch results
+            print(f"Epoch {epoch + 1}/{12}, Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
+
+            # Evaluate on the development data
+            model.eval()
+            correct_development_predictions = 0
+            total_development_examples = len(dev_loader.dataset)
+
+            with torch.no_grad():
+                for input_sequence, target in dev_loader:
+                    output = model(input_sequence)
+
+                    _, predicted = torch.max(output, 1)
+                    correct_development_predictions += (predicted == target).sum().item()
+
+            dev_accuracy = correct_development_predictions / total_development_examples * 100
+            print(f"Dev Accuracy: {dev_accuracy:.2f}%")
+        
+    except RuntimeError as e:
+        print(f"Runtime Error -> {e}")
 
     return model
 
