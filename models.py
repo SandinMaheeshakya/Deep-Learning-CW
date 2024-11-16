@@ -75,7 +75,7 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
         """
         self.embeddings = nn.Embedding(self.vocab_index_size, self.no_of_embeddings)
         self.rnn = nn.GRU(self.no_of_embeddings, self.hidden_dim,bidirectional=True,batch_first=True,num_layers=self.num_layers)
-        self.dropout = nn.Dropout(p=0.5)
+        self.dropout = nn.Dropout(p=0.7)
         self.fc = nn.Linear(2 * self.hidden_dim, self.output_dim)
         self.softmax = nn.Softmax(dim=1)
 
@@ -93,10 +93,16 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
         # Fully Connected and Output
         out = output[:, -1, :]  
         out = self.fc(self.dropout(out))
-        return out
+        return self.softmax(out)
 
     def predict(self, input_sequence):
-        input_sequence = [self.vocab_index.index_of(char) for char in input_sequence]
+        
+        input_sequence = torch.tensor([self.vocab_index.index_of(char) for char in input_sequence], 
+                                      dtype=torch.long
+            ) 
+        
+        input_sequence = input_sequence.unsqueeze(0) # add another dimension to match the required dimension
+
         with torch.no_grad():
             output = self.forward(input_sequence)
             prediction = torch.argmax(output, dim=1)
@@ -112,10 +118,11 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
     :param vocab_index: an Indexer of the character vocabulary (27 characters)
     :return: an RNNClassifier instance trained on the given data
     """
+
     # parameters
     embedding_size = 50
-    hidden_size = 120
-    layers = 1
+    hidden_size = 144
+    layers = 2
 
     # Model compiling
     model = RNNClassifier(len(vocab_index), embedding_size, hidden_size, layers, output_dim=2)
@@ -130,7 +137,7 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
     dev_loader = DataLoader(dev_dataset, batch_size=128, shuffle=False)
 
    # Training loop
-    for epoch in range(20):
+    for epoch in range(12):
         model.train()
         total_loss = 0
         correct_train_predictions = 0
@@ -157,7 +164,7 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
         train_accuracy = correct_train_predictions / total_train_examples * 100
 
         # Print epoch results
-        print(f"Epoch {epoch + 1}/{20}, Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
+        print(f"Epoch {epoch + 1}/{12}, Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
 
         # Evaluate on dev set
         model.eval()
