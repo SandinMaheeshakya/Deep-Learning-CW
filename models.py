@@ -54,6 +54,7 @@ class TensorDataset(Dataset):
         input_tensor = torch.tensor(input_sequence, dtype=torch.long)
         input_label = torch.tensor(label, dtype=torch.long)
         return input_tensor, input_label
+    
 
 class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
@@ -112,15 +113,6 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
             return prediction.item()
 
 def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, dev_vowel_exs, vocab_index):
-    """
-    :param args: command-line args, passed through here for your convenience
-    :param train_cons_exs: list of strings followed by consonants
-    :param train_vowel_exs: list of strings followed by vowels
-    :param dev_cons_exs: list of strings followed by consonants
-    :param dev_vowel_exs: list of strings followed by vowels
-    :param vocab_index: an Indexer of the character vocabulary (27 characters)
-    :return: an RNNClassifier instance trained on the given data
-    """
 
     # parameters
     embedding_size = 50
@@ -141,7 +133,8 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
 
    # Training loop
     for epoch in range(12):
-        model.train()
+        model.train() # training state
+        
         total_loss = 0
         correct_train_predictions = 0
         total_train_examples = len(train_loader.dataset)
@@ -169,19 +162,19 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
         # Print epoch results
         print(f"Epoch {epoch + 1}/{12}, Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
 
-        # Evaluate on dev set
+        # Evaluate on the development data
         model.eval()
-        correct_dev_predictions = 0
-        total_dev_examples = len(dev_loader.dataset)
+        correct_development_predictions = 0
+        total_development_examples = len(dev_loader.dataset)
 
         with torch.no_grad():
             for input_sequence, target in dev_loader:
                 output = model(input_sequence)
 
                 _, predicted = torch.max(output, 1)
-                correct_dev_predictions += (predicted == target).sum().item()
+                correct_development_predictions += (predicted == target).sum().item()
 
-        dev_accuracy = correct_dev_predictions / total_dev_examples * 100
+        dev_accuracy = correct_development_predictions / total_development_examples * 100
         print(f"Dev Accuracy: {dev_accuracy:.2f}%")
 
     return model
