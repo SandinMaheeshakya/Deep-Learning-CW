@@ -38,7 +38,6 @@ class FrequencyBasedClassifier(ConsonantVowelClassifier):
         else:
             return 1
 
-
 class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
     def __init__(self, vcidx, embedding_size, hidden_size, num_layers, output_dim):
@@ -253,14 +252,14 @@ class RNNLanguageModel(LanguageModel, nn.Module):
             context += char
     
         return log_prob_seq
-    
+            
 # Training function
 def train_lm(args, train_text, dev_text, vocab_index):
 
     # Hyperparameters
     embed_size = 256
     batch_size = 64
-    seq_length = 10
+    seq_length = 12
     epochs = 10
     lr = 0.0005
 
@@ -274,9 +273,8 @@ def train_lm(args, train_text, dev_text, vocab_index):
     # Adding SOS Token
     sos_token = vocab_index.add_and_get_index("<SOS>")
     for i in range(len(train_text) - seq_length):
-        input_sequence.append([vocab_index.index_of(char) for char in train_text[i:i+seq_length]])
-        target_sequence.append([vocab_index.index_of(char) for char in train_text[i+1:i+seq_length+1]])
-
+        input_sequence.append([sos_token] + [vocab_index.index_of(char) for char in train_text[i:i + (seq_length - 1)]])
+        target_sequence.append([vocab_index.index_of(char) for char in train_text[i : i + seq_length]])
 
     # Convert to tensors and create DataLoader
     input_tensor = torch.tensor(input_sequence, dtype=torch.long)
@@ -317,7 +315,7 @@ def train_lm(args, train_text, dev_text, vocab_index):
             loss.backward()  
             optimizer.step()
 
-            # Update total loss and tokens count for perplexity
+            # Total loss
             total_loss += loss.item()
 
         print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss / len(dataloader):.4f}")
