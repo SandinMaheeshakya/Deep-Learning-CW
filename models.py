@@ -193,7 +193,7 @@ class UniformLanguageModel(LanguageModel):
     def get_log_prob_sequence(self, next_chars, context):
         return np.log(1.0/self.voc_size) * len(next_chars)
 
-# Define the RNN Language Model
+
 class RNNLanguageModel(LanguageModel, nn.Module):
     def __init__(self, model_emb, model_dec, vocab_index):
         super(RNNLanguageModel, self).__init__()
@@ -201,7 +201,7 @@ class RNNLanguageModel(LanguageModel, nn.Module):
         self.model_dec = model_dec
         self.vocab_index = vocab_index
 
-        # Setting the device to cuda if available
+        # change the device to GPU if available 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # LSTM layer
