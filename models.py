@@ -291,6 +291,9 @@ def train_lm(args, train_text, dev_text, vocab_index):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
+    # Learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2)
+
     # Training loop
     model.train()
     for epoch in range(epochs):
@@ -318,8 +321,14 @@ def train_lm(args, train_text, dev_text, vocab_index):
             # Total loss
             total_loss += loss.item()
 
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss / len(dataloader):.4f}")
+        # Calculate perplexity
+        avg_loss = total_loss / len(dataloader)
+        perplexity = torch.exp(torch.tensor(avg_loss))
+        
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, Perplexity: {perplexity.item():.4f}")
 
+    scheduler.step(avg_loss)
+    
     # Return trained model
     return model
         
