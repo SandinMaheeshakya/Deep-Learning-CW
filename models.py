@@ -184,7 +184,6 @@ class LanguageModel(object):
         """
         raise Exception("Only implemented in subclasses")
 
-
 class UniformLanguageModel(LanguageModel):
     def __init__(self, voc_size):
         self.voc_size = voc_size
@@ -204,7 +203,7 @@ class RNNLanguageModel(LanguageModel, nn.Module):
         self.vocab_index = vocab_index
 
         # Define the LSTM layers
-        self.lstm = nn.LSTM(input_size=128, hidden_size=512, num_layers=2, batch_first=True)
+        self.lstm = nn.LSTM(input_size=256, hidden_size=512, dropout=0.2, num_layers=2,batch_first=True)
         self.fc = nn.Linear(512, len(vocab_index))  # Output layer
 
     def forward(self, input_sequence, initial_states=None):
@@ -223,16 +222,48 @@ class RNNLanguageModel(LanguageModel, nn.Module):
         fc_out = self.fc(lstm_output)  # Shape: (batch_size, seq_length, vocab_size)
         
         return fc_out, (hn, cn)  # Return output and the final hidden state
+    
+    def get_log_prob_single(self, next_char, context):
 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Convert context to indices
+        context_indices = [self.vocab_index.index_of(char) for char in context]
+        
+        # Add a batch dimension and convert to tensor
+        context_tensor = torch.tensor(context_indices, dtype=torch.long).unsqueeze(0).to(device)
+        
+        # Pass the context through the model
+        hidden = None  # Start with no hidden state
+        output, _ = self.forward(context_tensor, hidden)  # Shape: [1, seq_length, vocab_size]
+        
+        # Get the log-probabilities for the last character in the context
+        logits = output[0, -1]  # Shape: [vocab_size]
+        log_probs = torch.log_softmax(logits, dim=0)  # Log probabilities over the vocabulary
+        
+        # Get the log-probability of the next_char
+        next_char_index = self.vocab_index.index_of(next_char)
+
+        return log_probs[next_char_index].item()
+
+    def get_log_prob_sequence(self, next_chars, context):
+        log_prob_seq = 0.0
+        for next_char in next_chars:
+            # Calculate log-probability for the current character
+            log_prob_seq += self.get_log_prob_single(next_char, context)
+            
+            # Update the context to include the current character
+            context += next_char
+    
+        return log_prob_seq
 # Training function
 def train_lm(args, train_text, dev_text, vocab_index):
 
     # Hyperparameters
-    embed_size = 128
+    embed_size = 256
     batch_size = 64
-    seq_length = 30
-    epochs = 50
-    lr = 0.001
+    seq_length = 10
+    epochs = 10
+    lr = 0.0005
 
     # Device setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -244,7 +275,7 @@ def train_lm(args, train_text, dev_text, vocab_index):
     # Adding SOS Token
     sos_token = vocab_index.add_and_get_index("<SOS>")
     for i in range(len(train_text) - seq_length):
-        input_seqs.append([sos_token] +[vocab_index.index_of(char) for char in train_text[i:i+seq_length - 1]])
+        input_seqs.append([vocab_index.index_of(char) for char in train_text[i:i+seq_length]])
         target_seqs.append([vocab_index.index_of(char) for char in train_text[i+1:i+seq_length+1]])
 
 
@@ -252,7 +283,7 @@ def train_lm(args, train_text, dev_text, vocab_index):
     input_tensor = torch.tensor(input_seqs, dtype=torch.long)
     target_tensor = torch.tensor(target_seqs, dtype=torch.long)
     dataset = TensorDataset(input_tensor, target_tensor)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size,shuffle=True)
 
     # Initialize the embedding and decoder models
     embedding_model = nn.Embedding(len(vocab_index), embed_size).to(device)
@@ -298,10 +329,10 @@ def train_lm(args, train_text, dev_text, vocab_index):
             correct = (predicted == target_seq).float()
             total_correct += correct.sum().item()
 
-
         # Compute accuracy
         accuracy = total_correct / total_tokens * 100  # Accuracy as percentage
 
+        
         print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss / len(dataloader):.4f}, Accuracy: {accuracy:.2f}%")
 
     # Return trained model
