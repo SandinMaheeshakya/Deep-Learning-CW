@@ -304,18 +304,19 @@ def train_lm(args, train_text, dev_text, vocab_index):
             # Cuda support
             input_seq, target_seq = input_seq.to(device), target_seq.to(device)
 
-            # Initialize hidden states
             batch_size = input_seq.size(0)
-            hidden = None  # No initial hidden state passed
 
             optimizer.zero_grad()  # Clear gradients
 
             # Forward pass
-            output, hidden = model(input_seq, hidden)
+            output , _ = model(input_seq)
 
             # loss calculation
             loss = criterion(output.view(-1, len(vocab_index)), target_seq.view(-1))
             loss.backward()  
+
+            # Gradiant clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             # Total loss
