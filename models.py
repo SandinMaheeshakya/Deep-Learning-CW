@@ -76,7 +76,7 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
         4. Softmax Output Layer
         """
         self.embeddings = nn.Embedding(self.vocab_index_size, self.no_of_embeddings)
-        self.rnn = nn.GRU(self.no_of_embeddings, self.hidden_dim,bidirectional=True,batch_first=True,num_layers=self.num_layers)
+        self.gru = nn.GRU(self.no_of_embeddings, self.hidden_dim,bidirectional=True,batch_first=True,num_layers=self.num_layers)
         self.dropout = nn.Dropout(p=0.7)
         self.fc = nn.Linear(2 * self.hidden_dim, self.output_dim)
         self.softmax = nn.Softmax(dim=1)
