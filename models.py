@@ -3,10 +3,7 @@ import numpy as np
 import torch
 from torch import nn
 import collections
-from torch.utils.data import DataLoader, Dataset
-from torch.utils.data import DataLoader, TensorDataset
-from torch.nn.utils.rnn import pad_sequence
-import math
+from torch.utils.data import DataLoader, Dataset,TensorDataset
 
 #####################
 # MODELS FOR PART 1 #
