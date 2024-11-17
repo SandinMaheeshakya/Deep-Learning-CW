@@ -4,6 +4,9 @@ import torch
 from torch import nn
 import collections
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, TensorDataset
+from torch.nn.utils.rnn import pad_sequence
+import math
 
 #####################
 # MODELS FOR PART 1 #
@@ -94,7 +97,7 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
         h0 = torch.zeros(self.num_layers * 2,seq_embedding.size(0),self.hidden_dim)
 
         # RNN
-        output, _ = self.rnn(seq_embedding,h0)
+        output, _ = self.gru(seq_embedding,h0)
 
         # Fully Connected and Output
         out = output[:, -1, :]  
@@ -204,11 +207,9 @@ def train_frequency_based_classifier(cons_exs, vowel_exs):
         vowel_counts[ex[-1]] += 1
     return FrequencyBasedClassifier(consonant_counts, vowel_counts)
 
-
 #####################
 # MODELS FOR PART 2 #
 #####################
-
 
 class LanguageModel(object):
 
@@ -235,7 +236,6 @@ class LanguageModel(object):
         """
         raise Exception("Only implemented in subclasses")
 
-
 class UniformLanguageModel(LanguageModel):
     def __init__(self, voc_size):
         self.voc_size = voc_size
@@ -247,25 +247,161 @@ class UniformLanguageModel(LanguageModel):
         return np.log(1.0/self.voc_size) * len(next_chars)
 
 
-class RNNLanguageModel(LanguageModel):
+class RNNLanguageModel(LanguageModel, nn.Module):
     def __init__(self, model_emb, model_dec, vocab_index):
+        super(RNNLanguageModel, self).__init__()
         self.model_emb = model_emb
         self.model_dec = model_dec
         self.vocab_index = vocab_index
 
+        # change the device to GPU if available 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # LSTM layer
+        self.lstm = nn.LSTM(input_size=256, hidden_size=512, dropout=0.2, num_layers=2,batch_first=True)
+
+    def forward(self, input_sequence, initial_states=None):
+
+        if input_sequence is None:
+            raise ValueError("No value for the input sequence!")
+        
+        # embeded text
+        text_embeddings = self.model_emb(input_sequence)
+
+        if initial_states is None:
+            batch_size = input_sequence.size(0)
+            h0 = torch.zeros(2, batch_size, 512).to(input_sequence.device) 
+            c0 = torch.zeros(2, batch_size, 512).to(input_sequence.device)
+        else:
+            h0, c0 = initial_states
+
+        # LSTM output
+        lstm_output, (hn, cn) = self.lstm(text_embeddings, (h0, c0))
+        
+        fc_out = self.model_dec(lstm_output) # Fully connected Layer
+        
+        return fc_out, (hn, cn)
+    
     def get_log_prob_single(self, next_char, context):
-        raise Exception("Implement me")
 
+        try:
+            # Sequence Conversion
+            context_indices = [self.vocab_index.index_of(char) for char in context]
+            context_tensor = torch.tensor(context_indices, dtype=torch.long).unsqueeze(0).to(self.device)
+            
+            # model output
+            hs_cs = None 
+            output, _ = self.forward(context_tensor, hs_cs) 
+            
+            # log-probabilities of the last character
+            log_char = output[0, -1]
+            log_prob = torch.log_softmax(log_char, dim=0) 
+            
+            # log probability of the next character
+            next_char_index = self.vocab_index.index_of(next_char)
+            return log_prob[next_char_index].item()
+        
+        except Exception as e:
+            print(f'Error occured during single log probability calculation -> {e}')
+            
     def get_log_prob_sequence(self, next_chars, context):
-        raise Exception("Implement me")
-
-
+        log_prob_seq = 0.0
+        try:
+            for char in next_chars:
+                # Calculate log-probability for each character and add the context in order to use the log_prob_single method
+                log_prob_seq += self.get_log_prob_single(char, context)
+                context += char
+        
+            return log_prob_seq
+        
+        except Exception as e:
+            raise RuntimeError(f'Error Occured in sequence log calculation -> {e}')
+            
+# Training function
 def train_lm(args, train_text, dev_text, vocab_index):
-    """
-    :param args: command-line args, passed through here for your convenience
-    :param train_text: train text as a sequence of characters
-    :param dev_text: dev texts as a sequence of characters
-    :param vocab_index: an Indexer of the character vocabulary (27 characters)
-    :return: an RNNLanguageModel instance trained on the given data
-    """
-    raise Exception("Implement me")
+
+    # Hyperparameters
+    embed_size = 256
+    batch_size = 64
+    seq_length = 12
+    epochs = 10
+    lr = 0.0005
+
+    # Device setup
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Prepare input-output pairs for the model
+    input_sequence = []
+    target_sequence = []
+
+    try:
+        # Adding SOS Token
+        sos_token = vocab_index.add_and_get_index("<SOS>")
+        for i in range(len(train_text) - seq_length):
+            input_sequence.append([sos_token] + [vocab_index.index_of(char) for char in train_text[i:i + (seq_length - 1)]])
+            target_sequence.append([vocab_index.index_of(char) for char in train_text[i : i + seq_length]])
+
+        # Convert to tensors and create DataLoader
+        input_tensor = torch.tensor(input_sequence, dtype=torch.long)
+        target_tensor = torch.tensor(target_sequence, dtype=torch.long)
+        dataset = TensorDataset(input_tensor, target_tensor)
+        dataloader = DataLoader(dataset, batch_size=batch_size,shuffle=True)
+
+        # Initialize the embedding and decoder models
+        embedding_model = nn.Embedding(len(vocab_index), embed_size).to(device)
+        decoder_model = nn.Linear(512, len(vocab_index))
+        model = RNNLanguageModel(embedding_model, decoder_model, vocab_index).to(device)
+
+        # Optimizer and loss function
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        criterion = nn.CrossEntropyLoss()
+
+        # Learning rate scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2)
+    
+    except Exception as e:
+        print(f'Error -> {e}')
+
+    try:
+        # Training loop
+        model.train()
+        for epoch in range(epochs):
+            total_loss = 0
+
+            for batch_idx, (input_seq, target_seq) in enumerate(dataloader):
+
+                # Cuda support
+                input_seq, target_seq = input_seq.to(device), target_seq.to(device)
+
+                batch_size = input_seq.size(0)
+
+                optimizer.zero_grad()  # Clear gradients
+
+                # Forward pass
+                output , _ = model(input_seq)
+
+                # loss calculation
+                loss = criterion(output.view(-1, len(vocab_index)), target_seq.view(-1))
+                loss.backward()  
+
+                # Gradiant clipping
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+
+                # Total loss
+                total_loss += loss.item()
+
+            # Calculate perplexity
+            avg_loss = total_loss / len(dataloader)
+            perplexity = torch.exp(torch.tensor(avg_loss))
+            
+            print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, Perplexity: {perplexity.item():.4f}")
+
+        scheduler.step(avg_loss)
+        
+        # Return trained model
+        return model
+    
+    except RuntimeError as re:
+        print(f"Runtime Error Occured, Error ->{re}")
+        
