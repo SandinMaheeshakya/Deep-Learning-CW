@@ -209,6 +209,9 @@ class RNNLanguageModel(LanguageModel, nn.Module):
 
     def forward(self, input_sequence, initial_states=None):
 
+        if input_sequence is None:
+            raise ValueError("No value for the input sequence!")
+        
         # embeded text
         text_embeddings = self.model_emb(input_sequence)
 
@@ -228,30 +231,38 @@ class RNNLanguageModel(LanguageModel, nn.Module):
     
     def get_log_prob_single(self, next_char, context):
 
-        # Sequence Conversion
-        context_indices = [self.vocab_index.index_of(char) for char in context]
-        context_tensor = torch.tensor(context_indices, dtype=torch.long).unsqueeze(0).to(self.device)
+        try:
+            # Sequence Conversion
+            context_indices = [self.vocab_index.index_of(char) for char in context]
+            context_tensor = torch.tensor(context_indices, dtype=torch.long).unsqueeze(0).to(self.device)
+            
+            # model output
+            hs_cs = None 
+            output, _ = self.forward(context_tensor, hs_cs) 
+            
+            # log-probabilities of the last character
+            log_char = output[0, -1]
+            log_prob = torch.log_softmax(log_char, dim=0) 
+            
+            # log probability of the next character
+            next_char_index = self.vocab_index.index_of(next_char)
+            return log_prob[next_char_index].item()
         
-        # model output
-        hs_cs = None 
-        output, _ = self.forward(context_tensor, hs_cs) 
-        
-        # log-probabilities of the last character
-        log_char = output[0, -1]
-        log_prob = torch.log_softmax(log_char, dim=0) 
-        
-        # log probability of the next character
-        next_char_index = self.vocab_index.index_of(next_char)
-        return log_prob[next_char_index].item()
-
+        except Exception as e:
+            print(f'Error occured during single log probability calculation -> {e}')
+            
     def get_log_prob_sequence(self, next_chars, context):
         log_prob_seq = 0.0
-        for char in next_chars:
-            # Calculate log-probability for each character and add the context in order to use the log_prob_single method
-            log_prob_seq += self.get_log_prob_single(char, context)
-            context += char
-    
-        return log_prob_seq
+        try:
+            for char in next_chars:
+                # Calculate log-probability for each character and add the context in order to use the log_prob_single method
+                log_prob_seq += self.get_log_prob_single(char, context)
+                context += char
+        
+            return log_prob_seq
+        
+        except Exception as e:
+            raise RuntimeError(f'Error Occured in sequence log calculation -> {e}')
             
 # Training function
 def train_lm(args, train_text, dev_text, vocab_index):
@@ -270,71 +281,74 @@ def train_lm(args, train_text, dev_text, vocab_index):
     input_sequence = []
     target_sequence = []
 
-    # Adding SOS Token
-    sos_token = vocab_index.add_and_get_index("<SOS>")
-    for i in range(len(train_text) - seq_length):
-        input_sequence.append([sos_token] + [vocab_index.index_of(char) for char in train_text[i:i + (seq_length - 1)]])
-        target_sequence.append([vocab_index.index_of(char) for char in train_text[i : i + seq_length]])
+    try:
+        # Adding SOS Token
+        sos_token = vocab_index.add_and_get_index("<SOS>")
+        for i in range(len(train_text) - seq_length):
+            input_sequence.append([sos_token] + [vocab_index.index_of(char) for char in train_text[i:i + (seq_length - 1)]])
+            target_sequence.append([vocab_index.index_of(char) for char in train_text[i : i + seq_length]])
 
-    # Convert to tensors and create DataLoader
-    input_tensor = torch.tensor(input_sequence, dtype=torch.long)
-    target_tensor = torch.tensor(target_sequence, dtype=torch.long)
-    dataset = TensorDataset(input_tensor, target_tensor)
-    dataloader = DataLoader(dataset, batch_size=batch_size,shuffle=True)
+        # Convert to tensors and create DataLoader
+        input_tensor = torch.tensor(input_sequence, dtype=torch.long)
+        target_tensor = torch.tensor(target_sequence, dtype=torch.long)
+        dataset = TensorDataset(input_tensor, target_tensor)
+        dataloader = DataLoader(dataset, batch_size=batch_size,shuffle=True)
 
-    # Initialize the embedding and decoder models
-    embedding_model = nn.Embedding(len(vocab_index), embed_size).to(device)
-    decoder_model = nn.Linear(512, len(vocab_index))
-    model = RNNLanguageModel(embedding_model, decoder_model, vocab_index).to(device)
+        # Initialize the embedding and decoder models
+        embedding_model = nn.Embedding(len(vocab_index), embed_size).to(device)
+        decoder_model = nn.Linear(512, len(vocab_index))
+        model = RNNLanguageModel(embedding_model, decoder_model, vocab_index).to(device)
 
-    # Optimizer and loss function
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
+        # Optimizer and loss function
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        criterion = nn.CrossEntropyLoss()
 
-    # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2)
-
-    # Training loop
-    model.train()
-    for epoch in range(epochs):
-        total_loss = 0
-
-        for batch_idx, (input_seq, target_seq) in enumerate(dataloader):
-
-            # Cuda support
-            input_seq, target_seq = input_seq.to(device), target_seq.to(device)
-
-            batch_size = input_seq.size(0)
-
-            optimizer.zero_grad()  # Clear gradients
-
-            # Forward pass
-            output , _ = model(input_seq)
-
-            # loss calculation
-            loss = criterion(output.view(-1, len(vocab_index)), target_seq.view(-1))
-            loss.backward()  
-
-            # Gradiant clipping
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-
-            # Total loss
-            total_loss += loss.item()
-
-        # Calculate perplexity
-        avg_loss = total_loss / len(dataloader)
-        perplexity = torch.exp(torch.tensor(avg_loss))
-        
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, Perplexity: {perplexity.item():.4f}")
-
-    scheduler.step(avg_loss)
+        # Learning rate scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2)
     
-    # Return trained model
-    return model
+    except Exception as e:
+        print(f'Error -> {e}')
+
+    try:
+        # Training loop
+        model.train()
+        for epoch in range(epochs):
+            total_loss = 0
+
+            for batch_idx, (input_seq, target_seq) in enumerate(dataloader):
+
+                # Cuda support
+                input_seq, target_seq = input_seq.to(device), target_seq.to(device)
+
+                batch_size = input_seq.size(0)
+
+                optimizer.zero_grad()  # Clear gradients
+
+                # Forward pass
+                output , _ = model(input_seq)
+
+                # loss calculation
+                loss = criterion(output.view(-1, len(vocab_index)), target_seq.view(-1))
+                loss.backward()  
+
+                # Gradiant clipping
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+
+                # Total loss
+                total_loss += loss.item()
+
+            # Calculate perplexity
+            avg_loss = total_loss / len(dataloader)
+            perplexity = torch.exp(torch.tensor(avg_loss))
+            
+            print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, Perplexity: {perplexity.item():.4f}")
+
+        scheduler.step(avg_loss)
         
-if __name__ == "__main__":
-    embeddings = nn.Embedding(28,10)
-    X = embeddings(torch.tensor([12,11,5,4,3]))
-    print(X)
-    print(embeddings.weight.shape)
+        # Return trained model
+        return model
+    
+    except RuntimeError as re:
+        print(f"Runtime Error Occured, Error ->{re}")
+        
