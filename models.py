@@ -49,8 +49,8 @@ class TensoredDataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        example, label = self.data[idx]
-        input_sequence = [self.vocab_index.index_of(char) for char in example]
+        data, label = self.data[idx]
+        input_sequence = [self.vocab_index.index_of(char) for char in data]
         input_tensor = torch.tensor(input_sequence, dtype=torch.long)
         input_label = torch.tensor(label, dtype=torch.long)
         return input_tensor, input_label
@@ -122,22 +122,26 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
 def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, dev_vowel_exs, vocab_index):
 
-    # parameters
-    embedding_size = 50
-    hidden_size = 144
-    layers = 2
+    try:
+        # parameters
+        embedding_size = 50
+        hidden_size = 144
+        layers = 2
 
-    # Model compiling
-    model = RNNClassifier(len(vocab_index), embedding_size, hidden_size, layers, output_dim=2)
-    model.vocab_index = vocab_index # storing for feature reference
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    
-    # Create datasets and dataloaders
-    train_dataset = TensoredDataset(train_cons_exs, train_vowel_exs, vocab_index)
-    dev_dataset = TensoredDataset(dev_cons_exs, dev_vowel_exs, vocab_index)
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    dev_loader = DataLoader(dev_dataset, batch_size=128, shuffle=False)
+        # Model compiling
+        model = RNNClassifier(len(vocab_index), embedding_size, hidden_size, layers, output_dim=2)
+        model.vocab_index = vocab_index # storing for feature reference
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        
+        # Create datasets and dataloaders
+        train_dataset = TensoredDataset(train_cons_exs, train_vowel_exs, vocab_index)
+        dev_dataset = TensoredDataset(dev_cons_exs, dev_vowel_exs, vocab_index)
+        train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+        dev_loader = DataLoader(dev_dataset, batch_size=128, shuffle=False)
+        
+    except Exception as e:
+        print(f'Error occured during model comiplation stage -> {e}')
 
     try:
         # Training loop
