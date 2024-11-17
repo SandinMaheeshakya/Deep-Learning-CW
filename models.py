@@ -83,9 +83,9 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
     def forward(self, input_sequence):
 
-        # Value checks
+        # value validation
         if not isinstance(input_sequence, torch.Tensor):
-            raise TypeError("Input has to be a tensor")
+            raise TypeError("Tensor Input required!")
         
         # embedding
         seq_embedding = self.embeddings(input_sequence)
@@ -98,8 +98,7 @@ class RNNClassifier(ConsonantVowelClassifier,nn.Module):
 
         # Fully Connected and Output
         out = output[:, -1, :]  
-        out = self.fc(self.dropout(out)) # droput
-
+        out = self.fc(self.dropout(out)) # droput layer
         # Returns through a softmax layer
         return self.softmax(out)
 
@@ -172,10 +171,10 @@ def train_rnn_classifier(args, train_cons_exs, train_vowel_exs, dev_cons_exs, de
             avg_train_loss = total_loss / total_train_examples
             train_accuracy = correct_train_predictions / total_train_examples * 100
 
-            # Print epoch results
+            # Epoch results
             print(f"Epoch {epoch + 1}/{12}, Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
 
-            # Evaluate on the development data
+            # Development Data Evaluation
             model.eval()
             correct_development_predictions = 0
             total_development_examples = len(dev_loader.dataset)
@@ -251,7 +250,7 @@ class RNNLanguageModel(LanguageModel, nn.Module):
         self.model_dec = model_dec
         self.vocab_index = vocab_index
 
-        # change the device to GPU if available 
+        # change the device to GPU (optional) 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # LSTM layer
@@ -266,6 +265,8 @@ class RNNLanguageModel(LanguageModel, nn.Module):
         text_embeddings = self.model_emb(input_sequence)
 
         if initial_states is None:
+
+            # Creating intial states with 0 value tensors
             batch_size = input_sequence.size(0)
             h0 = torch.zeros(2, batch_size, 512).to(input_sequence.device) 
             c0 = torch.zeros(2, batch_size, 512).to(input_sequence.device)
@@ -394,7 +395,7 @@ def train_lm(args, train_text, dev_text, vocab_index):
             
             print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, Perplexity: {perplexity.item():.4f}")
 
-        scheduler.step(avg_loss)
+        scheduler.step(avg_loss) # lr scehduer increasing
         
         # Return trained model
         return model
